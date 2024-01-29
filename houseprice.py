@@ -97,10 +97,6 @@ SaleCondition: Condition of sale"""
 
 # combine sqft of all levels - useable sqft
 
-# total quality - sum of all quality features / total
-# re to catch all features with qual in them
-# total rating - sum of all rating features / total
-
 import pandas as pd
 import numpy as np
 import tensorflow as tf
@@ -113,6 +109,76 @@ from sklearn.model_selection import train_test_split
 import re
 import sys
 
+# Map for features in order of rank
+map_ = {
+"Utilities" : {"AllPub": 4, "NoSewr": 3, "NoSeWa": 2, "ELO": 1},
+"Electrical" : {"SBrkr": 5, "FuseA": 4, "FuseF": 3, "FuseP": 2, "Mix": 1},
+"KitchenQual" : {"Ex": 5, "Gd": 4, "TA": 3, "Fa": 2, "Po": 1},
+"ExterQual" : {'Ex': 5, 'Gd': 4, 'TA': 3, 'Fa': 2, 'Po': 1},
+"PoolQC" : {"Ex": 4, "Gd": 3, "TA": 2, "Fa": 1, "Na": 0},
+"BsmtQual" : {"Ex": 5, "Gd": 4, "TA": 3, "Fa": 2, "Po": 1, "Na": 0},
+"FireplaceQu" : {"Ex": 5, "Gd": 4, "TA": 3, "Fa": 2, "Po": 1, "Na": 0},
+"GarageQual" : {"Ex": 5, "Gd": 4, "TA": 3, "Fa": 2, "Po": 1, "Na": 0},
+"BsmtFinType1" : {"GLQ": 6, "ALQ": 5, "BLQ": 4, "Rec": 3, "LwQ": 2, "Unf": 1, "Na": 0},
+"BsmtFinType2" : {"GLQ": 6, "ALQ": 5, "BLQ": 4, "Rec": 3, "LwQ": 2, "Unf": 1, "Na": 0},
+"Fence" : {"GdPrv": 4, "MnPrv": 3, "GdWo": 2, "MnWw": 1, "Na": 0},
+"HeatingQC" : {'Ex': 5, 'Gd': 4, 'TA': 3, 'Fa': 2, 'Po': 1},
+
+"ExterCond" : {'Ex': 5, 'Gd': 4, 'TA': 3, 'Fa': 2, 'Po': 1},
+"BsmtCond" : {"Ex": 5, "Gd": 4, "TA": 3, "Fa": 2, "Po": 1, "Na": 0},
+"GarageCond" : {"Ex": 5, "Gd": 4, "TA": 3, "Fa": 2, "Po": 1, "Na": 0},
+}
+
+qual_features = ['PoolQC', 'BsmtQual', 'FireplaceQu', 'GarageQual', 'BsmtFinType1', 'BsmtFinType2', 'Fence', 'Utilities', 'Electrical', 'HeatingQC', 'KitchenQual', 'ExterQual']
+cond_features = ["BsmtCond", "GarageCond", "HeatingQC", "ExterCond"]
+
+foo = ["TotalBsmtSF", "BsmtUnfSF", "BsmtFinSF1", "BsmtFinSF2", "1stFlrSF", "2ndFlrSF", "LowQualFinSF", "WoodDeckSF", "OpenPorchSF"]
+
+def main():
+    train_df = pd.read_csv("data/train.csv")
+    test_df = pd.read_csv("data/test.csv")
+
+    train_df['dataset'] = "train"
+    test_df['dataset'] = "test"
+
+
+    joined_df = pd.concat([train_df, test_df])
+
+    clean_data(joined_df)
+
+    qualcond_percent(joined_df, qual_features + qual_features, "Qual")
+    qualcond_percent(joined_df, cond_features, "Cond")
+    
+    print(joined_df[f'QualPercen'])
+    print(joined_df[f'CondPercen'])
+    # replace na vals in series in prep for bining
+
+
+def clean_data(df):
+    df['Utilities'] = df['Utilities'].fillna(df['Utilities'].mode()[0])
+    df['Electrical'] = df['Electrical'].fillna(df['Electrical'].mode()[0])
+    df['KitchenQual'] = df['KitchenQual'].fillna(df['KitchenQual'].mode()[0])
+    
+    
+    df[qual_features] = df[qual_features].fillna('Na')
+    df[cond_features] = df[cond_features].fillna('Na')
+
+
+def qualcond_percent(df, features, type):
+    """
+    Calc percentage score for Quality and Condition
+    """
+    df[f'{type}Max'] = 0
+    df[f'{type}Total'] = 0
+    # sum up feature ratings to find the total score of said house and max score
+    for feature in features:
+        df[f'{feature}_rating'] = df[feature].apply(lambda x: map_[feature][x])
+        df[f'{type}Max'] += df[f'{feature}_rating'].apply(lambda x: x if x == 0 else df[f'{feature}_rating'].unique().max())
+        df[f'{type}Total'] += df[f'{feature}_rating']
+
+
+    df[f'{type}Percen'] = round(df[f'{type}Total'] / df[f'{type}Max'], 2)
+
 
 def root_mean_squared_logarithmic_error(y_true, y_pred):
     """
@@ -121,61 +187,6 @@ def root_mean_squared_logarithmic_error(y_true, y_pred):
     rmsle = mean_squared_error(y_true, y_pred, squared=False)
     return rmsle
 
-pd.set_option('display.max_rows', 1000)
-pd.set_option('display.max_columns', 1000)
 
-train_df = pd.read_csv("train.csv")
-test_df = pd.read_csv("test.csv")
-
-train_df['dataset'] = "train"
-test_df['dataset'] = "test"
-
-
-joined_df = pd.concat([train_df, test_df])
-# replace na vals in series in prep for bining
-na_features = ['PoolQC', 'BsmtQual', 'FireplaceQu', 'GarageQual', 'BsmtFinType1', 'BsmtFinType2', 'Fence']
-joined_df[na_features] = joined_df[na_features].fillna('Na')
-
-qual_features = ['Utilities', 'Electrical', 'HeatingQC', 'KitchenQual', 'ExterQual']
-
-joined_df['Utilities'] = joined_df['Utilities'].fillna(joined_df['Utilities'].mode()[0])
-joined_df['Electrical'] = joined_df['Electrical'].fillna(joined_df['Electrical'].mode()[0])
-joined_df['KitchenQual'] = joined_df['KitchenQual'].fillna(joined_df['KitchenQual'].mode()[0])
-# Convert 'ExterCond' to categorical with the specified order
-
-map_ = {
-"Utilities" : {"AllPub": 4, "NoSewr": 3, "NoSeWa": 2, "ELO": 1},
-"Electrical" : {"SBrkr": 5, "FuseA": 4, "FuseF": 3, "FuseP": 2, "Mix": 1},
-"KitchenQual" : {"Ex": 5, "Gd": 4, "TA": 3, "Fa": 2, "Po": 1},
-"ExterQual" : {'Ex': 5, 'Gd': 4, 'TA': 3, 'Fa': 2, 'Po': 1},
-"HeatingQC" : {'Ex': 5, 'Gd': 4, 'TA': 3, 'Fa': 2, 'Po': 1},
-"PoolQC" : {"Ex": 4, "Gd": 3, "TA": 2, "Fa": 1, "Na": 0},
-"BsmtQual" : {"Ex": 5, "Gd": 4, "TA": 3, "Fa": 2, "Po": 1, "Na": 0},
-"FireplaceQu" : {"Ex": 5, "Gd": 4, "TA": 3, "Fa": 2, "Po": 1, "Na": 0},
-"GarageQual" : {"Ex": 5, "Gd": 4, "TA": 3, "Fa": 2, "Po": 1, "Na": 0},
-"BsmtFinType1" : {"GLQ": 6, "ALQ": 5, "BLQ": 4, "Rec": 3, "LwQ": 2, "Unf": 1, "Na": 0},
-"BsmtFinType2" : {"GLQ": 6, "ALQ": 5, "BLQ": 4, "Rec": 3, "LwQ": 2, "Unf": 1, "Na": 0},
-"Fence" : {"GdPrv": 4, "MnPrv": 3, "GdWo": 2, "MnWw": 1, "Na": 0},
-}
-
-
-for feature in qual_features + na_features:
-    print(feature)
-    print(joined_df[feature].unique())
-    joined_df[f'{feature}_rating'] = joined_df[feature].apply(lambda x: map_[feature][x])
-
-
-
-# joined_df['OverallQualPercen'] = 0
-# joined_df['OverallQualTotal'] = 0
-# for feature in qual_features + na_features:
-
-#     joined_df['OverallQualTotal'] += joined_df[f'{feature}_rating'].apply(lambda x: x if x == 0 else joined_df[f'{feature}_rating'].unique()[-1])
-
-# new = [f'{f}_rating' for f in qual_features + na_features]
-
-# joined_df[new].to_csv("foo.csv")
-# joined_df[qual_features + na_features].to_csv('foo1.csv')
-# print(joined_df[new])
-
-print(joined_df['OverallQualTotal'])
+if __name__ == "__main__":
+    main()
